@@ -99,6 +99,19 @@ td{padding:10px 4px;border-top:1px solid var(--bd);text-align:right}th:first-chi
 .snow i{position:absolute;top:-12px;border-radius:50%;background:#fff;opacity:.75;animation:fall linear infinite}
 @keyframes fall{to{transform:translateY(112vh)}}
 @media(prefers-reduced-motion:reduce){.snow{display:none}}
+.feed{position:fixed;inset:0;z-index:15;background:#000;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.sl{position:relative;height:100vh;height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;display:flex;align-items:center;justify-content:center;background:#000}
+.sl video{width:100%;height:100%;object-fit:contain;background:#000}
+.sl.paused::after{content:"Paused";position:absolute;color:#fff;font-weight:700;background:rgba(0,0,0,.55);padding:8px 18px;border-radius:99px;pointer-events:none}
+.fov{position:absolute;left:16px;right:76px;bottom:calc(104px + env(safe-area-inset-bottom,0px));text-shadow:0 2px 12px #000;color:#fff}
+.fov b{display:block;font-size:18px;margin-top:8px}
+.fside{position:absolute;right:12px;bottom:calc(120px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+.fside button{width:46px;height:46px;border-radius:50%;border:0;background:rgba(0,0,0,.5);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);display:grid;place-items:center;cursor:pointer}
+.fside svg{width:22px;height:22px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ftop{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:12px;right:12px;z-index:16;display:flex;gap:10px;align-items:center;justify-content:space-between}
+.ftop select{width:auto;flex:1;max-width:220px;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-color:rgba(255,255,255,.2);font-weight:700}
+.fempty{text-align:center;color:#aaa;padding:0 30px}
+@media(min-width:900px){.feed{left:220px}.ftop{left:232px}.fov{bottom:40px}.fside{bottom:56px}.sl video{max-width:480px}}
 </style>
 </head>
 <body>
@@ -173,7 +186,7 @@ const def=()=>({name:'Goalie',theme:'red',wu:'lb',lib:[
  I('workout','Goalie Core Circuit',20,'Plank, Pallof press, dead bug and side plank.',[1,6],{ps:3,pr:12,lvl:'mod',muscles:['abs','obliques','lowback']}),
  I('workout','Post-to-Post Slides',15,'Butterfly slides and recoveries. Stay low, eyes up.',[3,5],{ps:5,pr:30,pu:'sec',tw:30,tr:30,tn:5,lvl:'mod',muscles:['adductors','hipflex','quads','glutes']}),
  I('workout','Lower Body Strength',40,'Squat, RDL, Bulgarian split squat and Copenhagen plank.',[2,5],{ps:4,pr:5,lvl:'hard',muscles:['quads','hams','glutes','lowback','adductors']})],
- sched:[],games:[],logs:[],clr:{},pbs:[
+ sched:[],games:[],logs:[],clr:{},vids:[],sore:[],pbs:[
   {id:uid(),name:'Vertical Jump',unit:'in',low:false,e:[]},{id:uid(),name:'5-10-5 Shuttle',unit:'s',low:true,e:[]},{id:uid(),name:'Max Push-ups',unit:'reps',low:false,e:[]}],
  done:{},rem:{on:false,time:'17:00',game:90},cal:{url:'',last:0,proxy:false},rf:'',gf:[]});
 function load(){const b=def(),d=ld('rl_goalie',null);if(!d){sv('rl_goalie',b);return b}
@@ -183,8 +196,8 @@ let S=load(),view='dash',lf='all',stab='over',cm='svp',tv='today',selM=null;
 const save=()=>sv('rl_goalie',S);
 
 /* ---------- calculations ---------- */
-const info=d=>{const it=S.lib.filter(i=>i.days.includes(d.getDay())),ds=S.done[dk(d)]||[],n=it.filter(i=>ds.includes(i.id)).length;
- return{it,n,state:!it.length?'rest':n===it.length?'done':'open'}};
+const info=d=>{const it=S.lib.filter(i=>i.days.includes(d.getDay())),ds=S.done[dk(d)]||[],n=it.filter(i=>ds.includes(i.id)).length,any=ds.filter(id=>S.lib.some(i=>i.id===id)).length;
+ return{it,n,any,state:any>0?'done':!it.length?'rest':'open'}};
 function streak(){let s=0,d=new Date();for(let i=0;i<400;i++){const st=info(d).state;if(st==='done')s++;else if(st==='open'&&i>0)break;d=addD(d,-1)}return s}
 function best(){let b=0,r=0;for(let i=364;i>=0;i--){const st=info(addD(new Date(),-i)).state;if(st==='done'){r++;b=Math.max(b,r)}else if(st==='open'&&i>0)r=0}return b}
 const gsort=()=>S.games.slice().sort((a,b)=>a.date.localeCompare(b.date));
@@ -233,6 +246,8 @@ function recov(){
    const vf=l.sets&&l.sets.length?Math.min(1.4,.7+l.sets.length*.1):1;
    (l.muscles||[]).forEach(m=>{if(!R[m]||(S.clr&&S.clr[m]>=l.t))return;const need=MB[m]*(l.k||1)*vf,rem=need-age;
     if(rem>R[m].rem){R[m].rem=rem;R[m].need=need}if(l.t>R[m].last)R[m].last=l.t})});
+  const sr=(S.sore||[]).slice(-1)[0];
+  if(sr&&now-sr.t<2592e5){const age=(now-sr.t)/36e5;Object.keys(sr.lv).forEach(m=>{if(!R[m]||(S.clr&&S.clr[m]>=sr.t))return;const hrs=[0,14,32,56][sr.lv[m]]||0,rem=hrs-age;if(rem>R[m].rem){R[m].rem=rem;R[m].need=hrs}R[m].sore=sr.lv[m]})}
   return R}
 const mst=r=>r.rem<=0?'ready':r.rem/r.need>.5?'rest':'rec';
 const fh=h=>h<1?'under 1h':h<48?Math.round(h)+'h':Math.floor(h/24)+'d '+Math.round(h%24)+'h';
@@ -258,10 +273,10 @@ const BK={
  calves:'M121 268L136 268C140 296 136 326 130 344L122 344C117 322 115 292 121 268Z'};
 const SIL=['M100 58L134 62C142 76 142 100 136 122L130 152L136 180L100 184Z','M144 66C158 62 168 74 169 96L171 134L172 190L150 192L148 134L142 94Z','M102 182L140 176C148 208 146 240 141 260L139 346L145 362L116 362L120 262C112 238 106 214 102 190Z'];
 const sym=d=>`<path d="${d}"/><path d="${d}" transform="translate(200 0) scale(-1 1)"/>`;
-function bmap(side,R){
+function bmap(side,R,ck){
   const P=side==='f'?FR:BK;
   return`<svg viewBox="0 0 200 368" class="bm"><g fill="var(--s2)" stroke="rgba(255,255,255,.12)" stroke-width="1.5"><circle cx="100" cy="26" r="17"/><rect x="93" y="42" width="14" height="16"/>${SIL.map(sym).join('')}</g>`+
-  Object.keys(P).map(id=>`<g class="mu${selM===id?' sel':''}" style="fill:${SC[mst(R[id])]}" onclick="event.stopPropagation();selMuscle('${id}')">${sym(P[id])}</g>`).join('')+`</svg>`}
+  Object.keys(P).map(id=>ck?`<g class="mu" data-m="${id}" style="fill:${SOCol[CK.lv[id]||0]}" onclick="ckTap('${id}')">${sym(P[id])}</g>`:`<g class="mu${selM===id?' sel':''}" style="fill:${SC[mst(R[id])]}" onclick="event.stopPropagation();selMuscle('${id}')">${sym(P[id])}</g>`).join('')+`</svg>`}
 function selMuscle(id){selM=id;if(view!=='body')go('body');else render()}
 function clearM(m){S.clr[m]=Date.now();save();render()}
 function bodyView(){
@@ -270,14 +285,14 @@ function bodyView(){
   if(sel){const r=R[sel],st=mst(r),ex=[...new Set(S.logs.filter(l=>l.type==='workout'&&(l.muscles||[]).includes(sel)&&Date.now()-l.t<5184e5).map(l=>l.name))];
    det=`<div class="card" style="margin-top:14px;border-color:${SC[st]}"><div class="row sp"><div><b style="font-size:20px">${ML[sel]}</b><div style="color:${SC[st]};font-weight:700;font-size:14px">${{ready:'Ready to train',rec:'Recovering',rest:'Needs rest'}[st]}</div></div>
    <div style="text-align:right"><div style="font-size:28px;font-weight:800">${st==='ready'?'0h':fh(r.rem)}</div><div class="sub">${st==='ready'?'rest needed':'until ready'}</div></div></div>
-   <p class="sub" style="margin-top:10px">${r.last?'Last worked '+ago(r.last)+(ex.length?' by '+ex.map(esc).join(', '):''):'No recent workouts hit this muscle.'}</p>
+   ${r.sore?`<p class="wn">Reported ${SOL[r.sore].toLowerCase()} at check-in</p>`:''}<p class="sub" style="margin-top:10px">${r.last?'Last worked '+ago(r.last)+(ex.length?' by '+ex.map(esc).join(', '):''):'No recent workouts hit this muscle.'}</p>
    ${st!=='ready'?`<button class="btn ghost sm" style="margin-top:12px" onclick="clearM('${sel}')">Feels fine, mark ready</button>`:''}</div>`}
   else det='<p class="sub" style="text-align:center;margin-top:12px">Tap a muscle to see how long it needs.</p>';
-  return hdr('Recovery','Muscle map')+`<div class="card" style="margin-top:16px"><div class="leg"><span><i style="background:${SC.ready}"></i>Ready ${cnt.ready}</span><span><i style="background:${SC.rec}"></i>Recovering ${cnt.rec}</span><span><i style="background:${SC.rest}"></i>Needs rest ${cnt.rest}</span></div>
+  return hdr('Recovery','Muscle map','<button class="btn sm" onclick="ckOpen()">Check in</button>')+`<div class="card" style="margin-top:16px"><div class="leg"><span><i style="background:${SC.ready}"></i>Ready ${cnt.ready}</span><span><i style="background:${SC.rec}"></i>Recovering ${cnt.rec}</span><span><i style="background:${SC.rest}"></i>Needs rest ${cnt.rest}</span></div>
   <div class="models" style="margin-top:12px"><div>${bmap('f',R)}<p class="sub fb">FRONT</p></div><div>${bmap('b',R)}<p class="sub fb">BACK</p></div></div></div>${det}
   <h2>All muscles</h2><div class="card">${ids.map(m=>{const r=R[m],st=mst(r),p=st==='ready'?100:Math.round((1-r.rem/r.need)*100);
    return`<div class="pb" onclick="selMuscle('${m}')" style="cursor:pointer"><div class="grow"><div class="row sp"><b>${ML[m]}</b><span style="color:${SC[st]};font-weight:700;font-size:13px">${st==='ready'?'Ready':fh(r.rem)}</span></div><div class="bar" style="margin-top:8px"><b style="width:${p}%;background:${SC[st]}"></b></div></div></div>`}).join('')}</div>
-  <p class="sub" style="margin-top:12px">Estimates come from the workouts you complete. Bigger muscles, harder sessions and more sets need longer. Stretches do not add fatigue. This is a training guide, not medical advice.</p>`}
+  ${soreTrend()}<p class="sub" style="margin-top:12px">Estimates come from the workouts you complete. Bigger muscles, harder sessions and more sets need longer. Stretches do not add fatigue. This is a training guide, not medical advice.</p>`}
 
 /* sets and reps */
 const plan=x=>x.ps>0?`${x.ps} × ${x.pr||'?'} ${x.pu==='sec'?'sec':'reps'}${x.pw?' @ '+x.pw+' '+S.wu:''}`:'';
@@ -301,12 +316,12 @@ function logDraw(){const x=S.lib.find(i=>i.id===LG.id),sec=x.pu==='sec';
   <button class="btn full" style="margin-top:18px" onclick="logSave()">Save and complete</button>`)}
 function logSave(){logSync();const x=S.lib.find(i=>i.id===LG.id),k=dk(),sets=LG.rows.map(s=>({r:+s.r||0,w:+s.w||0})).filter(s=>s.r>0);
   const prev=S.logs.filter(l=>l.item===x.id&&l.d!==k).reduce((m,l)=>Math.max(m,...l.sets.map(s=>s.w)),0),top_=sets.reduce((m,s)=>Math.max(m,s.w),0);
-  commit(x,sets);closeM();render();
-  if(top_>0&&prev>0&&top_>prev)toast('New weight PR: '+top_+' '+S.wu);else if(info(new Date()).state==='done')toast('Day complete! Streak: '+streak());else toast('Logged')}
+  const was=info(new Date()).any;commit(x,sets);closeM();render();
+  if(top_>0&&prev>0&&top_>prev)toast('New weight PR: '+top_+' '+S.wu);else if(!was)toast('Streak active! '+streak()+' day'+(streak()===1?'':'s'));else toast('Logged')}
 function tog(id){const x=S.lib.find(i=>i.id===id);if(!x)return;const k=dk(),a=S.done[k]||(S.done[k]=[]),y=document.scrollingElement.scrollTop;
   if(a.includes(id)){S.done[k]=a.filter(v=>v!==id);S.logs=S.logs.filter(l=>!(l.d===k&&l.item===id));save()}
   else if(x.ps>0)return logOpen(id);
-  else{commit(x,[]);if(info(new Date()).state==='done')toast('Day complete! Streak: '+streak())}
+  else{const was=info(new Date()).any;commit(x,[]);if(!was)toast('Streak active! '+streak()+' day'+(streak()===1?'':'s'))}
   render();document.scrollingElement.scrollTop=y}
 function itemTimer(id){const x=S.lib.find(i=>i.id===id);if(!x)return;
   timerSetup(x.ps>0&&x.pu==='sec'?{w:x.pr,r:x.tr||10,n:x.ps,name:x.name,item:id}:x.tw?{w:x.tw,r:x.tr,n:x.tn||1,name:x.name,item:id}:{w:(x.mins||1)*60,r:0,n:1,name:x.name,item:id})}
@@ -317,14 +332,14 @@ function dash(){
   const R=recov(),hot=Object.keys(MB).sort((a,b)=>R[b].rem-R[a].rem).filter(m=>mst(R[m])!=='ready').slice(0,3);
   let wk='';for(let k=6;k>=0;k--){const d=addD(t,-k),x=info(d);wk+=`<div class="wd ${x.state}${k===0?' now':''}">${DN[d.getDay()]}<i>${x.state==='done'?'✓':x.state==='rest'?'–':''}</i></div>`}
   return hdr(g,esc(S.name),`<button class="btn ghost sm" onclick="timerSetup()">Timer</button><button class="btn ghost sm" onclick="go('set')" aria-label="Settings">${svg(IC.set)}</button>`)+
-  (remDue()?`<div class="banner"><div class="grow"><b>Session not finished</b><div class="sub">${i.it.length-i.n} item${i.it.length-i.n===1?'':'s'} left today</div></div><button class="btn sm" onclick="go('today')">Open</button></div>`:'')+
+  (remDue()?`<div class="banner"><div class="grow"><b>Keep your streak alive</b><div class="sub">${i.it.length-i.n} item${i.it.length-i.n===1?'':'s'} left today</div></div><button class="btn sm" onclick="go('today')">Open</button></div>`:'')+
   `<h2>Today</h2><div class="card hero"><div class="row">${ring(p,i.it.length?i.n+'/'+i.it.length:'Rest',i.it.length?'COMPLETE':'DAY')}
    <div class="grow"><div class="sub">Current streak</div><div style="font-size:46px;font-weight:900;letter-spacing:-.04em;line-height:1">${s}<span class="acc" style="font-size:18px;margin-left:6px">${s===1?'day':'days'}</span></div>
-   <div class="sub" style="margin-top:6px">Best: ${Math.max(best(),s)} days</div><button class="btn sm" style="margin-top:12px" onclick="go('today')">${i.it.length&&i.n<i.it.length?'Start session':'View plan'}</button></div></div></div>
+   <div class="sub" style="margin-top:6px">${i.state==='done'?'Streak active today':'Do one stretch or workout to keep it going'} · Best ${Math.max(best(),s)}</div><button class="btn sm" style="margin-top:12px" onclick="go('today')">${i.it.length&&i.n<i.it.length?'Start session':'View plan'}</button></div></div></div>
   <h2>Recovery</h2><div class="card row" onclick="go('body')" style="cursor:pointer"><div style="width:88px;flex:none">${bmap('f',R)}</div><div class="grow">
    ${hot.length?hot.map(m=>`<div class="row sp" style="margin-bottom:6px"><span>${ML[m]}</span><span style="color:${SC[mst(R[m])]};font-weight:700;font-size:13px">${fh(R[m].rem)}</span></div>`).join(''):'<b>All muscles ready</b><div class="sub" style="margin-bottom:6px">Good to train anything today.</div>'}
    <span class="link" style="font-size:13px">Open muscle map</span></div></div>
-  <h2>Last 7 days</h2><div class="card"><div class="week">${wk}</div></div>
+  ${ckCard()}<h2>Last 7 days</h2><div class="card"><div class="week">${wk}</div></div>
   <h2>Season</h2><div class="grid g4"><div class="card tile"><b>${T.gp?fsv(T.svp):'–'}</b><span>SV%</span></div><div class="card tile"><b>${T.gp?T.gaa.toFixed(2):'–'}</b><span>GAA</span></div><div class="card tile"><b>${T.w}-${T.l}-${T.otl}</b><span>Record</span></div><div class="card tile"><b>${T.so}</b><span>Shutouts</span></div></div>
   <div class="row" style="margin-top:12px"><button class="btn full" onclick="gameForm()">Log a game</button><button class="btn ghost full" onclick="stab='rec';go('stats')">Records</button></div>
   <h2>Next up</h2><div class="card">${up?evRow(up,0):'<div class="empty">Nothing scheduled. <button class="link" onclick="go(\'sched\')">Add or import events</button></div>'}</div>
@@ -342,8 +357,8 @@ function train(){
   `<div class="seg" style="margin:16px 0">${[['today','Today'],['lib','Library']].map(a=>`<button class="${tv===a[0]?'on':''}" onclick="tv='${a[0]}';render()">${a[1]}</button>`).join('')}</div>`+(tv==='today'?todayV(R):libV())}
 function todayV(R){
   const i=info(new Date()),p=i.it.length?i.n/i.it.length:0;
-  const grp=ty=>{const a=i.it.filter(x=>x.type===ty);return a.length?`<h2>${ty==='stretch'?'Stretches':'Workouts'}</h2>`+a.map(x=>itemRow(x,R)+(x.detail||lastLog(x.id)?`<p class="sub" style="margin:-4px 8px 12px 12px">${esc(x.detail)}${lastLog(x.id)?`<br><span class="acc">Last ${esc(lastLog(x.id))}</span>`:''}${x.video?` <a class="acc" target="_blank" rel="noopener" href="${esc(x.video)}">Video</a>`:''}</p>`:'')).join(''):''};
-  return`<div class="card hero row">${ring(p,Math.round(p*100)+'%','DONE')}<div class="grow"><b style="font-size:18px">${i.state==='done'?'Session complete':i.state==='rest'?'Rest day':'Keep going'}</b><p class="sub">${i.it.reduce((a,x)=>a+(+x.mins||0),0)} min planned · streak ${streak()}</p></div></div>
+  const grp=ty=>{const a=i.it.filter(x=>x.type===ty);return a.length?`<h2>${ty==='stretch'?'Stretches':'Workouts'}</h2>`+a.map(x=>itemRow(x,R)+(x.detail||lastLog(x.id)||vidOf(x)?`<p class="sub" style="margin:-4px 8px 12px 12px">${esc(x.detail)}${lastLog(x.id)?`<br><span class="acc">Last ${esc(lastLog(x.id))}</span>`:''}${x.video?` <a class="acc" target="_blank" rel="noopener" href="${esc(x.video)}">Video</a>`:''}${vidOf(x)}</p>`:'')).join(''):''};
+  return`<div class="card hero row">${ring(p,Math.round(p*100)+'%','DONE')}<div class="grow"><b style="font-size:18px">${i.it.length&&i.n===i.it.length?'Session complete':i.state==='rest'?'Rest day':i.state==='done'?'Streak active':'Keep going'}</b><p class="sub">${i.it.reduce((a,x)=>a+(+x.mins||0),0)} min planned · streak ${streak()}</p></div></div>
   ${i.it.length?grp('stretch')+grp('workout'):'<div class="card empty" style="margin-top:14px">No sessions assigned today.<br><button class="link" onclick="go(\'lib\')">Assign items in the library</button></div>'}`}
 function libV(){
   const L=S.lib.filter(x=>lf==='all'||x.type===lf);
@@ -492,7 +507,7 @@ function settings(){
    <p class="sub" style="margin-top:10px">Reminders fire while the app is open and show on your dashboard when you return. Phones do not allow web apps to alert you when fully closed unless the app is hosted with push messaging.</p></div>
   <h2>Calendar</h2><div class="card"><b>${S.cal.url?'Connected':'Not connected'}</b><p class="sub" style="margin:4px 0 12px">Import Google or Apple calendars into your schedule.</p><button class="btn ghost full" onclick="calForm()">Manage calendar</button></div>
   <h2>Data</h2><div class="card"><button class="btn ghost full" onclick="exportData()">Export backup</button><button class="btn ghost full" style="margin-top:10px" onclick="restoreForm()">Restore backup</button><button class="btn ghost full" style="margin-top:10px" onclick="wipe()">Reset everything</button>
-   <p class="sub" style="margin-top:10px">Data is saved in this browser. The Home Screen app and Safari keep separate copies, so use backup and restore to move between them.</p></div>
+   <p class="sub" style="margin-top:10px">Data is saved in this browser. The Home Screen app and Safari keep separate copies, so use backup and restore to move between them. Video clips are not included in backups.</p></div>
   ${ios&&!navigator.standalone?`<h2>Install</h2><div class="card"><b>Add to Home Screen</b><p class="sub" style="margin-top:4px">In Safari tap Share, then Add to Home Screen.</p></div>`:''}`}
 function setTheme(k){S.theme=k;save();applyTheme();render()}
 function askNotif(){try{Notification.requestPermission().then(()=>render())}catch(e){toast('Not supported on this device')}}
@@ -543,14 +558,80 @@ function timerEnd(){clearInterval(tk);beep(3);const it=T&&T.item,x=it&&S.lib.fin
   $('#t').innerHTML=`<div class="tv"><div class="in" style="text-align:center;padding-top:80px"><div style="font-size:64px">🏒</div><h1 style="margin:14px 0 6px">Done</h1><p class="sub">${nm?'Marked complete in today’s plan.':'Nice work.'}</p><button class="btn full" style="margin-top:26px" onclick="timerClose()">Close</button></div></div>`}
 function timerClose(){clearInterval(tk);T=null;try{wl&&wl.release()}catch(e){}$('#t').innerHTML='';render()}
 
+/* ---------- shorts (video feed) ---------- */
+Object.assign(IC,{shorts:'M7 4l13 8-13 8z',vol:'M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 010 7',mute:'M4 9v6h4l5 4V5L8 9H4zM17 9l4 6M21 9l-4 6',trash:'M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13'});
+let fc='workout',vm=true,urls={},fobs=null,PEND='';
+const idb=()=>new Promise((res,rej)=>{try{const r=indexedDB.open('rl_goalie_vids',1);r.onupgradeneeded=()=>r.result.createObjectStore('v');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}});
+const idbPut=async(k,v)=>{const d=await idb();return new Promise((res,rej)=>{const t=d.transaction('v','readwrite');t.objectStore('v').put(v,k);t.oncomplete=()=>res();t.onerror=()=>rej(t.error)})};
+const idbGet=async k=>{const d=await idb();return new Promise((res,rej)=>{const q=d.transaction('v').objectStore('v').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})};
+const idbDel=async k=>{const d=await idb();return new Promise(res=>{const t=d.transaction('v','readwrite');t.objectStore('v').delete(k);t.oncomplete=()=>res();t.onerror=()=>res()})};
+function revokeAll(){Object.keys(urls).forEach(k=>{try{URL.revokeObjectURL(urls[k])}catch(e){}});urls={}}
+const slide=v=>{const it=S.lib.find(i=>i.id===v.item);
+  return`<section class="sl" data-id="${v.id}"><video playsinline loop muted preload="none" data-id="${v.id}" onclick="vTap(this)"></video>
+  <div class="fov"><span class="tag ${v.cat==='stretch'?'':'w'}">${v.cat}</span><b>${esc(v.title)}</b>${it?`<div style="font-size:13px;color:#ddd;margin-top:4px">${esc(it.name)}${plan(it)?' · '+plan(it):''}</div>`:''}</div>
+  <div class="fside"><button class="vm" onclick="vMute()" aria-label="Sound">${svg(vm?IC.mute:IC.vol)}</button><button onclick="vDel('${v.id}')" aria-label="Delete">${svg(IC.trash)}</button></div></section>`};
+function shortsView(){
+  const L=S.vids.filter(v=>v.cat===fc).slice().reverse();
+  return`<div class="ftop"><select id="fsel" onchange="fc=this.value;render()" aria-label="Category"><option value="workout" ${fc==='workout'?'selected':''}>Workouts</option><option value="stretch" ${fc==='stretch'?'selected':''}>Stretches</option></select><button class="btn sm" onclick="vidForm()">+ Upload</button></div>
+  <div class="feed" id="feed">${L.length?L.map(slide).join(''):`<section class="sl"><div class="fempty"><b style="font-size:20px;color:#fff">No ${fc} clips yet</b><p style="margin:10px 0 18px">Upload videos from your Photos, then scroll through them here.</p><button class="btn" onclick="vidForm()">Upload a clip</button></div></section>`}</div>`}
+async function loadV(v){if(v.src)return;try{const b=await idbGet(v.dataset.id);if(!b)throw 0;const u=URL.createObjectURL(b);urls[v.dataset.id]=u;
+  v.onerror=()=>{const f=v.parentNode.querySelector('.fov');if(f&&!f.querySelector('.wn'))f.insertAdjacentHTML('beforeend','<p class="wn">This clip could not be played here.</p>')};v.src=u}catch(e){}}
+function setupFeed(){
+  const f=$('#feed');if(!f)return;if(fobs)fobs.disconnect();
+  try{fobs=new IntersectionObserver(es=>es.forEach(e=>{const v=e.target.querySelector('video');if(!v)return;
+    if(e.isIntersecting&&e.intersectionRatio>.6){loadV(v).then(()=>{v.muted=vm;const p=v.play();if(p&&p.catch)p.catch(()=>{});e.target.classList.remove('paused')})}else v.pause()}),{root:f,threshold:[0,.6,1]});
+   f.querySelectorAll('.sl').forEach(s=>fobs.observe(s))}catch(e){}
+  if(PEND){const s=f.querySelector('.sl[data-id="'+PEND+'"]');if(s)s.scrollIntoView();PEND=''}}
+function vTap(v){if(!v.src)return;if(v.paused){v.play();v.parentNode.classList.remove('paused')}else{v.pause();v.parentNode.classList.add('paused')}}
+function vMute(){vm=!vm;document.querySelectorAll('.feed video').forEach(v=>{v.muted=vm});document.querySelectorAll('.fside .vm').forEach(b=>{b.innerHTML=svg(vm?IC.mute:IC.vol)})}
+function watch(id){const v=S.vids.find(x=>x.id===id);if(!v)return;fc=v.cat;PEND=id;go('shorts')}
+const vidOf=x=>{const v=S.vids.find(z=>z.item===x.id);return v?`<br><button class="link" onclick="watch('${v.id}')">Watch clip</button>`:''};
+function vidForm(){modal('Upload clips',`<p class="sub">Choose videos from your Photos. Short clips work best and save on your device only.</p>
+  <label class="l">Videos</label><input id="vf" type="file" accept="video/*" multiple>
+  <label class="l">Title (optional, single clip)</label><input id="vt" maxlength="50">
+  <label class="l">Category</label><select id="vc"><option value="workout" ${fc==='workout'?'selected':''}>Workout</option><option value="stretch" ${fc==='stretch'?'selected':''}>Stretch</option></select>
+  <label class="l">Link to a library item (optional)</label><select id="vl"><option value="">None</option>${S.lib.map(i=>`<option value="${i.id}">${esc(i.name)} (${i.type})</option>`).join('')}</select>
+  <button class="btn full" id="vb" style="margin-top:18px" onclick="vidSave()">Upload</button>`)}
+async function vidSave(){
+  const fs=[...$('#vf').files];if(!fs.length)return toast('Choose a video first');
+  const cat=val('vc'),item=val('vl'),t1=val('vt').trim(),b=$('#vb');b.disabled=true;b.textContent='Saving…';let n=0;
+  try{try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+   for(const f of fs){const id=uid()+uid();await idbPut(id,f);S.vids.push({id,title:(fs.length===1&&t1)||f.name.replace(/\.[^.]+$/,'').slice(0,50)||'Clip',cat,item,date:dk(),size:f.size});n++}
+   fc=cat;save();closeM();render();toast(n+' clip'+(n>1?'s':'')+' added')}
+  catch(e){if(n){fc=cat;save();closeM();render()}toast('Could not save every clip. Storage may be full.',4500)}}
+function vDel(id){const v=S.vids.find(x=>x.id===id);if(!v)return;modal('Delete clip?',`<p class="sub">${esc(v.title)} will be removed from this device.</p><button class="btn full" style="margin-top:16px" onclick="vDelGo('${id}')">Delete</button>`)}
+async function vDelGo(id){await idbDel(id);S.vids=S.vids.filter(x=>x.id!==id);save();closeM();render()}
+
+/* ---------- soreness check-in ---------- */
+const SOL=['Fine','Mild','Sore','Very sore'],SOCol=['#3a3a40','#ffd24a','#ff8a2a','#ff3b3b'];
+let CK=null;
+const ckTxt=()=>{const k=Object.keys(CK.lv);return k.length?k.map(m=>ML[m]+': '+SOL[CK.lv[m]]).join(' · '):'Nothing marked. Feeling fresh.'};
+function ckOpen(){const t=(S.sore||[]).find(s=>s.d===dk());CK={lv:Object.assign({},t?t.lv:{}),e:t?t.e:3,note:t?t.note:''};
+  modal('Soreness check-in',`<p class="sub">Tap a muscle to rate it: mild, sore, then very sore. Tap again to clear.</p>
+  <div class="leg" style="margin:12px 0">${SOL.map((l,i)=>`<span><i style="background:${SOCol[i]}"></i>${l}</span>`).join('')}</div>
+  <div class="models"><div>${bmap('f',null,1)}<p class="sub fb">FRONT</p></div><div>${bmap('b',null,1)}<p class="sub fb">BACK</p></div></div>
+  <p class="sub" id="cm" style="margin-top:10px">${ckTxt()}</p>
+  <label class="l">Energy today</label><select id="ce">${['Drained','Low','Okay','Good','Great'].map((t,i)=>`<option value="${i+1}" ${CK.e===i+1?'selected':''}>${t}</option>`).join('')}</select>
+  <label class="l">Notes (optional)</label><textarea id="cn" maxlength="300">${esc(CK.note)}</textarea>
+  <button class="btn full" style="margin-top:18px" onclick="ckSave()">Save check-in</button>`)}
+function ckTap(m){const v=((CK.lv[m]||0)+1)%4;if(v)CK.lv[m]=v;else delete CK.lv[m];
+  document.querySelectorAll('[data-m="'+m+'"]').forEach(g=>{g.style.fill=SOCol[v]});$('#cm').textContent=ckTxt()}
+function ckSave(){const e={id:uid(),d:dk(),t:Date.now(),lv:CK.lv,e:+val('ce')||3,note:val('cn').trim()};
+  S.sore=(S.sore||[]).filter(s=>s.d!==e.d).concat(e).slice(-120);save();closeM();render();toast(Object.keys(e.lv).length?'Saved. Recovery map updated.':'Check-in saved')}
+function ckCard(){const c=(S.sore||[]).find(s=>s.d===dk()),n=c?Object.keys(c.lv).length:0;
+  return`<h2>Check-in</h2><div class="card row sp"><div class="grow"><b>${c?'Checked in today':'How does your body feel?'}</b><div class="sub">${c?(n?n+' sore area'+(n>1?'s':'')+' logged':'Feeling fresh'):'Log soreness to sharpen your recovery map.'}</div></div><button class="btn sm" onclick="ckOpen()">${c?'Update':'Check in'}</button></div>`}
+function soreTrend(){const a=(S.sore||[]).slice(-14);
+  return`<h2>Soreness trend</h2><div class="card">${a.length>1?line(a.map(s=>({l:fmt(s.d),v:Object.keys(s.lv).reduce((t,m)=>t+s.lv[m],0)})),v=>v.toFixed(0)):'<div class="empty">Check in on two or more days to see your trend.</div>'}</div>`}
+
 /* ---------- shell ---------- */
 IC.body='M12 3a2 2 0 110 4 2 2 0 010-4zM6 10h12M12 10v6M12 16l-3 5M12 16l3 5';
 function modal(t,b){$('#m').innerHTML=`<div class="mb" onclick="if(event.target===this)closeM()"><div class="md"><div class="mh"><b>${t}</b><button class="x" onclick="closeM()">✕</button></div>${b}</div></div>`}
 function closeM(){$('#m').innerHTML=''}
 function go(v){if(v==='today'||v==='lib'){tv=v;v='train'}view=v;render();scrollTo(0,0)}
 function render(){
-  const V={dash,train,body:bodyView,sched,stats,set:settings},N=[['dash','Home','home'],['train','Train','today'],['body','Recovery','body'],['sched','Schedule','cal'],['stats','Stats','stats'],['set','Settings','set',1]];
-  $('#app').innerHTML=`<main>${V[view]()}</main><nav class="nav"><div class="brand">RED<i>LINE</i></div>${N.map(n=>`<button class="${(view===n[0]?'on':'')+(n[3]?' dsk':'')}" onclick="go('${n[0]}')">${svg(IC[n[2]])}${n[1]}</button>`).join('')}</nav>`}
+  const V={dash,train,body:bodyView,shorts:shortsView,sched,stats,set:settings},N=[['dash','Home','home'],['train','Train','today'],['body','Recovery','body'],['shorts','Shorts','shorts'],['sched','Schedule','cal'],['stats','Stats','stats'],['set','Settings','set',1]];
+  $('#app').innerHTML=`<main>${V[view]()}</main><nav class="nav"><div class="brand">RED<i>LINE</i></div>${N.map(n=>`<button class="${(view===n[0]?'on':'')+(n[3]?' dsk':'')}" onclick="go('${n[0]}')">${svg(IC[n[2]])}${n[1]}</button>`).join('')}</nav>`;
+  document.documentElement.style.overflow=view==='shorts'?'hidden':'';if(view==='shorts')setupFeed();else revokeAll()}
 applyTheme();render();checkRem();setInterval(checkRem,30000);
 if(S.cal.url&&Date.now()-S.cal.last>36e5)syncCal(false);
 </script>
