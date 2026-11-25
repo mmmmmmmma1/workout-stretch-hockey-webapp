@@ -112,6 +112,8 @@ td{padding:10px 4px;border-top:1px solid var(--bd);text-align:right}th:first-chi
 .ftop select{width:auto;flex:1;max-width:220px;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-color:rgba(255,255,255,.2);font-weight:700}
 .fempty{text-align:center;color:#aaa;padding:0 30px}
 @media(min-width:900px){.feed{left:220px}.ftop{left:232px}.fov{bottom:40px}.fside{bottom:56px}.sl video{max-width:480px}}
+input[type=range]{padding:0;border:0;background:none;accent-color:var(--ac);height:30px;margin-top:6px}
+button:disabled{opacity:.45;pointer-events:none}
 </style>
 </head>
 <body>
@@ -196,8 +198,8 @@ let S=load(),view='dash',lf='all',stab='over',cm='svp',tv='today',selM=null;
 const save=()=>sv('rl_goalie',S);
 
 /* ---------- calculations ---------- */
-const info=d=>{const it=S.lib.filter(i=>i.days.includes(d.getDay())),ds=S.done[dk(d)]||[],n=it.filter(i=>ds.includes(i.id)).length,any=ds.filter(id=>S.lib.some(i=>i.id===id)).length;
- return{it,n,any,state:any>0?'done':!it.length?'rest':'open'}};
+const info=d=>{const it=S.lib.filter(i=>i.days.includes(d.getDay())),ds=S.done[dk(d)]||[],n=it.filter(i=>ds.includes(i.id)).length,any=ds.filter(id=>/^dl/.test(id)||S.lib.some(i=>i.id===id)).length;
+ const dry=ds.some(id=>/^dl/.test(id));return{it,n,any,dry,pr:dry?1:it.length?n/it.length:0,state:any>0?'done':!it.length?'rest':'open'}};
 function streak(){let s=0,d=new Date();for(let i=0;i<400;i++){const st=info(d).state;if(st==='done')s++;else if(st==='open'&&i>0)break;d=addD(d,-1)}return s}
 function best(){let b=0,r=0;for(let i=364;i>=0;i--){const st=info(addD(new Date(),-i)).state;if(st==='done'){r++;b=Math.max(b,r)}else if(st==='open'&&i>0)r=0}return b}
 const gsort=()=>S.games.slice().sort((a,b)=>a.date.localeCompare(b.date));
@@ -237,19 +239,20 @@ function remDue(){const n=new Date();return S.rem.on&&pad(n.getHours())+':'+pad(
 const hdr=(e,t,r)=>`<div class="row sp"><div><p class="eb">${e}</p><h1>${t}</h1></div><div class="row">${r||''}</div></div>`;
 
 /* muscle recovery model */
-const MB={chest:48,shoulders:48,biceps:36,triceps:36,forearms:24,abs:24,obliques:36,hipflex:36,adductors:48,quads:60,calves:36,traps:36,back:48,lowback:48,glutes:60,hams:60};
+const MB={chest:48,shoulders:48,biceps:48,triceps:48,forearms:48,abs:48,obliques:48,hipflex:48,adductors:48,quads:48,calves:48,traps:48,back:48,lowback:48,glutes:48,hams:48};
 const ML={chest:'Chest',shoulders:'Shoulders',biceps:'Biceps',triceps:'Triceps',forearms:'Forearms',abs:'Abs',obliques:'Obliques',hipflex:'Hip flexors',adductors:'Adductors',quads:'Quads',calves:'Calves',traps:'Traps',back:'Back and lats',lowback:'Lower back',glutes:'Glutes',hams:'Hamstrings'};
 const LV={light:.6,mod:1,hard:1.3},SC={ready:'#2ecc71',rec:'#ffb020',rest:'#ff4d4d'};
 function recov(){
   const now=Date.now(),R={};Object.keys(MB).forEach(m=>R[m]={rem:0,need:0,last:0});
-  S.logs.forEach(l=>{if(l.type!=='workout')return;const age=(now-l.t)/36e5;if(age>200)return;
+  S.logs.forEach(l=>{if(l.type!=='workout'&&l.type!=='dryland')return;const age=(now-l.t)/36e5;if(age>200)return;
    const vf=l.sets&&l.sets.length?Math.min(1.4,.7+l.sets.length*.1):1;
-   (l.muscles||[]).forEach(m=>{if(!R[m]||(S.clr&&S.clr[m]>=l.t))return;const need=MB[m]*(l.k||1)*vf,rem=need-age;
-    if(rem>R[m].rem){R[m].rem=rem;R[m].need=need}if(l.t>R[m].last)R[m].last=l.t})});
+   (l.muscles||[]).forEach(m=>{if(!R[m]||(S.clr&&S.clr[m]>=l.t))return;const need=l.type==='dryland'?sh((l.strain||{})[m]||50):MB[m]*(l.k||1)*vf,rem=need-age;
+    if(rem>R[m].rem){R[m].rem=rem;R[m].need=need;R[m].soft=l.type==='dryland'?((l.strain||{})[m]||50)<50:(l.k||1)<1}if(l.t>R[m].last)R[m].last=l.t})});
   const sr=(S.sore||[]).slice(-1)[0];
-  if(sr&&now-sr.t<2592e5){const age=(now-sr.t)/36e5;Object.keys(sr.lv).forEach(m=>{if(!R[m]||(S.clr&&S.clr[m]>=sr.t))return;const hrs=[0,14,32,56][sr.lv[m]]||0,rem=hrs-age;if(rem>R[m].rem){R[m].rem=rem;R[m].need=hrs}R[m].sore=sr.lv[m]})}
+  if(sr&&sr.rc){const age=(now-sr.t)/36e5;Object.keys(sr.rc).forEach(m=>{if(!R[m]||!R[m].need||(S.clr&&S.clr[m]>=sr.t)||sr.t<=R[m].last)return;R[m].rem=Math.max(0,R[m].need*(1-sr.rc[m]/100)-age)})}
+  if(sr&&now-sr.t<2592e5){const age=(now-sr.t)/36e5;Object.keys(sr.lv).forEach(m=>{if(!R[m]||(S.clr&&S.clr[m]>=sr.t))return;const hrs=[0,14,32,56][sr.lv[m]]||0,rem=hrs-age;if(rem>R[m].rem){R[m].rem=rem;R[m].need=hrs;R[m].soft=sr.lv[m]===1}R[m].sore=sr.lv[m]})}
   return R}
-const mst=r=>r.rem<=0?'ready':r.rem/r.need>.5?'rest':'rec';
+const mst=r=>r.rem<=0?'ready':(r.soft||r.rem/r.need<=.5)?'rec':'rest';
 const fh=h=>h<1?'under 1h':h<48?Math.round(h)+'h':Math.floor(h/24)+'d '+Math.round(h%24)+'h';
 const ago=t=>{const h=(Date.now()-t)/36e5;return h<1?'just now':h<24?Math.round(h)+'h ago':Math.round(h/24)+'d ago'};
 const FR={
@@ -273,22 +276,22 @@ const BK={
  calves:'M121 268L136 268C140 296 136 326 130 344L122 344C117 322 115 292 121 268Z'};
 const SIL=['M100 58L134 62C142 76 142 100 136 122L130 152L136 180L100 184Z','M144 66C158 62 168 74 169 96L171 134L172 190L150 192L148 134L142 94Z','M102 182L140 176C148 208 146 240 141 260L139 346L145 362L116 362L120 262C112 238 106 214 102 190Z'];
 const sym=d=>`<path d="${d}"/><path d="${d}" transform="translate(200 0) scale(-1 1)"/>`;
-function bmap(side,R,ck){
+function bmap(side,R,mode){
   const P=side==='f'?FR:BK;
   return`<svg viewBox="0 0 200 368" class="bm"><g fill="var(--s2)" stroke="rgba(255,255,255,.12)" stroke-width="1.5"><circle cx="100" cy="26" r="17"/><rect x="93" y="42" width="14" height="16"/>${SIL.map(sym).join('')}</g>`+
-  Object.keys(P).map(id=>ck?`<g class="mu" data-m="${id}" style="fill:${SOCol[CK.lv[id]||0]}" onclick="ckTap('${id}')">${sym(P[id])}</g>`:`<g class="mu${selM===id?' sel':''}" style="fill:${SC[mst(R[id])]}" onclick="event.stopPropagation();selMuscle('${id}')">${sym(P[id])}</g>`).join('')+`</svg>`}
+  Object.keys(P).map(id=>mode===1?`<g class="mu" data-m="${id}" style="fill:${SOCol[CK.lv[id]||0]}" onclick="ckTap('${id}')">${sym(P[id])}</g>`:mode===2?`<g class="mu" data-m="${id}" style="fill:${DL.sel[id]!=null?stc(DL.sel[id]):'#3a3a40'}" onclick="dlTap('${id}')">${sym(P[id])}</g>`:`<g class="mu${selM===id?' sel':''}" style="fill:${SC[mst(R[id])]}" onclick="event.stopPropagation();selMuscle('${id}')">${sym(P[id])}</g>`).join('')+`</svg>`}
 function selMuscle(id){selM=id;if(view!=='body')go('body');else render()}
 function clearM(m){S.clr[m]=Date.now();save();render()}
 function bodyView(){
   const R=recov(),ids=Object.keys(MB).sort((a,b)=>R[b].rem-R[a].rem),cnt={ready:0,rec:0,rest:0};ids.forEach(m=>cnt[mst(R[m])]++);
   const sel=selM&&R[selM]?selM:null;let det;
-  if(sel){const r=R[sel],st=mst(r),ex=[...new Set(S.logs.filter(l=>l.type==='workout'&&(l.muscles||[]).includes(sel)&&Date.now()-l.t<5184e5).map(l=>l.name))];
-   det=`<div class="card" style="margin-top:14px;border-color:${SC[st]}"><div class="row sp"><div><b style="font-size:20px">${ML[sel]}</b><div style="color:${SC[st]};font-weight:700;font-size:14px">${{ready:'Ready to train',rec:'Recovering',rest:'Needs rest'}[st]}</div></div>
+  if(sel){const r=R[sel],st=mst(r),ex=[...new Set(S.logs.filter(l=>l.type!=='stretch'&&(l.muscles||[]).includes(sel)&&Date.now()-l.t<5184e5).map(l=>l.name))];
+   det=`<div class="card" style="margin-top:14px;border-color:${SC[st]}"><div class="row sp"><div><b style="font-size:20px">${ML[sel]}</b><div style="color:${SC[st]};font-weight:700;font-size:14px">${{ready:'Ready to train',rec:'Train with care',rest:'Needs rest'}[st]}</div></div>
    <div style="text-align:right"><div style="font-size:28px;font-weight:800">${st==='ready'?'0h':fh(r.rem)}</div><div class="sub">${st==='ready'?'rest needed':'until ready'}</div></div></div>
-   ${r.sore?`<p class="wn">Reported ${SOL[r.sore].toLowerCase()} at check-in</p>`:''}<p class="sub" style="margin-top:10px">${r.last?'Last worked '+ago(r.last)+(ex.length?' by '+ex.map(esc).join(', '):''):'No recent workouts hit this muscle.'}</p>
+   ${st==='rec'?`<p class="wn">Under 50% strain left. You can train it, but go lighter and stop if it feels off.</p>`:''}${st!=='ready'?`<p class="sub" style="margin-top:10px">Estimated full recovery: <b style="color:var(--tx)">${eta(r.rem)}</b></p>`:''}${r.sore?`<p class="wn">Reported ${SOL[r.sore].toLowerCase()} at check-in</p>`:''}<p class="sub" style="margin-top:10px">${r.last?'Last worked '+ago(r.last)+(ex.length?' by '+ex.map(esc).join(', '):''):'No recent workouts hit this muscle.'}</p>
    ${st!=='ready'?`<button class="btn ghost sm" style="margin-top:12px" onclick="clearM('${sel}')">Feels fine, mark ready</button>`:''}</div>`}
   else det='<p class="sub" style="text-align:center;margin-top:12px">Tap a muscle to see how long it needs.</p>';
-  return hdr('Recovery','Muscle map','<button class="btn sm" onclick="ckOpen()">Check in</button>')+`<div class="card" style="margin-top:16px"><div class="leg"><span><i style="background:${SC.ready}"></i>Ready ${cnt.ready}</span><span><i style="background:${SC.rec}"></i>Recovering ${cnt.rec}</span><span><i style="background:${SC.rest}"></i>Needs rest ${cnt.rest}</span></div>
+  return hdr('Recovery','Muscle map','<button class="btn sm" onclick="ckOpen()">Check in</button>')+`<div class="card" style="margin-top:16px"><div class="leg"><span><i style="background:${SC.ready}"></i>Ready ${cnt.ready}</span><span><i style="background:${SC.rec}"></i>Train with care ${cnt.rec}</span><span><i style="background:${SC.rest}"></i>Needs rest ${cnt.rest}</span></div>
   <div class="models" style="margin-top:12px"><div>${bmap('f',R)}<p class="sub fb">FRONT</p></div><div>${bmap('b',R)}<p class="sub fb">BACK</p></div></div></div>${det}
   <h2>All muscles</h2><div class="card">${ids.map(m=>{const r=R[m],st=mst(r),p=st==='ready'?100:Math.round((1-r.rem/r.need)*100);
    return`<div class="pb" onclick="selMuscle('${m}')" style="cursor:pointer"><div class="grow"><div class="row sp"><b>${ML[m]}</b><span style="color:${SC[st]};font-weight:700;font-size:13px">${st==='ready'?'Ready':fh(r.rem)}</span></div><div class="bar" style="margin-top:8px"><b style="width:${p}%;background:${SC[st]}"></b></div></div></div>`}).join('')}</div>
@@ -328,14 +331,14 @@ function itemTimer(id){const x=S.lib.find(i=>i.id===id);if(!x)return;
 
 /* dashboard */
 function dash(){
-  const t=new Date(),i=info(t),s=streak(),h=t.getHours(),g=h<12?'Good morning':h<18?'Good afternoon':'Good evening',T=tot(),p=i.it.length?i.n/i.it.length:0,up=evs().filter(e=>e.date>=dk())[0];
+  const t=new Date(),i=info(t),s=streak(),h=t.getHours(),g=h<12?'Good morning':h<18?'Good afternoon':'Good evening',T=tot(),p=i.pr,up=evs().filter(e=>e.date>=dk())[0];
   const R=recov(),hot=Object.keys(MB).sort((a,b)=>R[b].rem-R[a].rem).filter(m=>mst(R[m])!=='ready').slice(0,3);
   let wk='';for(let k=6;k>=0;k--){const d=addD(t,-k),x=info(d);wk+=`<div class="wd ${x.state}${k===0?' now':''}">${DN[d.getDay()]}<i>${x.state==='done'?'✓':x.state==='rest'?'–':''}</i></div>`}
-  return hdr(g,esc(S.name),`<button class="btn ghost sm" onclick="timerSetup()">Timer</button><button class="btn ghost sm" onclick="go('set')" aria-label="Settings">${svg(IC.set)}</button>`)+
+  return hdr(g,esc(S.name),`<button class="btn ghost sm" onclick="timerSetup()">Timer</button><button class="btn ghost sm" onclick="go('sched')" aria-label="Schedule">${svg(IC.cal)}</button><button class="btn ghost sm" onclick="go('set')" aria-label="Settings">${svg(IC.set)}</button>`)+
   (remDue()?`<div class="banner"><div class="grow"><b>Keep your streak alive</b><div class="sub">${i.it.length-i.n} item${i.it.length-i.n===1?'':'s'} left today</div></div><button class="btn sm" onclick="go('today')">Open</button></div>`:'')+
-  `<h2>Today</h2><div class="card hero"><div class="row">${ring(p,i.it.length?i.n+'/'+i.it.length:'Rest',i.it.length?'COMPLETE':'DAY')}
+  `<h2>Today</h2><div class="card hero"><div class="row">${ring(p,i.dry?'100%':i.it.length?i.n+'/'+i.it.length:'Rest',i.dry?'DAY DONE':i.it.length?'COMPLETE':'DAY')}
    <div class="grow"><div class="sub">Current streak</div><div style="font-size:46px;font-weight:900;letter-spacing:-.04em;line-height:1">${s}<span class="acc" style="font-size:18px;margin-left:6px">${s===1?'day':'days'}</span></div>
-   <div class="sub" style="margin-top:6px">${i.state==='done'?'Streak active today':'Do one stretch or workout to keep it going'} · Best ${Math.max(best(),s)}</div><button class="btn sm" style="margin-top:12px" onclick="go('today')">${i.it.length&&i.n<i.it.length?'Start session':'View plan'}</button></div></div></div>
+   <div class="sub" style="margin-top:6px">${i.state==='done'?'Streak active today':'Do one stretch or workout to keep it going'} · Best ${Math.max(best(),s)}</div><button class="btn sm" style="margin-top:12px" onclick="go('today')">${!i.dry&&i.it.length&&i.n<i.it.length?'Start session':'View plan'}</button></div></div></div>
   <h2>Recovery</h2><div class="card row" onclick="go('body')" style="cursor:pointer"><div style="width:88px;flex:none">${bmap('f',R)}</div><div class="grow">
    ${hot.length?hot.map(m=>`<div class="row sp" style="margin-bottom:6px"><span>${ML[m]}</span><span style="color:${SC[mst(R[m])]};font-weight:700;font-size:13px">${fh(R[m].rem)}</span></div>`).join(''):'<b>All muscles ready</b><div class="sub" style="margin-bottom:6px">Good to train anything today.</div>'}
    <span class="link" style="font-size:13px">Open muscle map</span></div></div>
@@ -346,19 +349,20 @@ function dash(){
   <h2>Today’s plan</h2>${i.it.length?i.it.slice(0,3).map(x=>itemRow(x,R)).join(''):'<div class="card empty">Rest day. Recover well.</div>'}`}
 
 /* train */
+const warnC=(x,R)=>x.type!=='workout'?'':(x.muscles||[]).filter(m=>R[m]&&mst(R[m])==='rec').map(m=>ML[m]).join(', ');
 const warn=(x,R)=>x.type!=='workout'?'':(x.muscles||[]).filter(m=>R[m]&&mst(R[m])==='rest').map(m=>ML[m]).join(', ');
 const itemRow=(x,R)=>{const k=dk(),d=(S.done[k]||[]).includes(x.id),lg=S.logs.find(l=>l.d===k&&l.item===x.id),w=!d&&R?warn(x,R):'';
   return`<div class="item ${d?'d':''}"><button class="chk" onclick="tog('${x.id}')" aria-label="Toggle">${svg('M5 12l5 5 9-10')}</button><div class="grow"><div class="nm">${esc(x.name)}</div>
-  <div class="sub"><span class="tag ${x.type==='stretch'?'':'w'}">${x.type}</span>${d&&lg&&lg.sets.length?lg.sets.length+' sets logged':plan(x)||(x.mins?x.mins+' min':'')}</div>${w?`<div class="wn">Still recovering: ${w}</div>`:''}</div>
+  <div class="sub"><span class="tag ${x.type==='stretch'?'':'w'}">${x.type}</span>${d&&lg&&lg.sets.length?lg.sets.length+' sets logged':plan(x)||(x.mins?x.mins+' min':'')}</div>${w?`<div class="wn">Still recovering: ${w}</div>`:''}${!d&&R&&warnC(x,R)?`<div class="wn" style="color:#ffd24a">Train carefully: ${warnC(x,R)}</div>`:''}</div>
   <div class="col">${d&&x.ps>0?`<button class="btn ghost sm" onclick="logOpen('${x.id}')">Sets</button>`:''}${!d&&(x.tw||x.mins||x.ps>0)?`<button class="btn ghost sm" onclick="itemTimer('${x.id}')">Timer</button>`:''}</div></div>`};
 function train(){
   const R=recov();
   return hdr(new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}),'Train',`<button class="btn ghost sm" onclick="timerSetup()">Timer</button>`)+
   `<div class="seg" style="margin:16px 0">${[['today','Today'],['lib','Library']].map(a=>`<button class="${tv===a[0]?'on':''}" onclick="tv='${a[0]}';render()">${a[1]}</button>`).join('')}</div>`+(tv==='today'?todayV(R):libV())}
 function todayV(R){
-  const i=info(new Date()),p=i.it.length?i.n/i.it.length:0;
+  const i=info(new Date()),p=i.pr;
   const grp=ty=>{const a=i.it.filter(x=>x.type===ty);return a.length?`<h2>${ty==='stretch'?'Stretches':'Workouts'}</h2>`+a.map(x=>itemRow(x,R)+(x.detail||lastLog(x.id)||vidOf(x)?`<p class="sub" style="margin:-4px 8px 12px 12px">${esc(x.detail)}${lastLog(x.id)?`<br><span class="acc">Last ${esc(lastLog(x.id))}</span>`:''}${x.video?` <a class="acc" target="_blank" rel="noopener" href="${esc(x.video)}">Video</a>`:''}${vidOf(x)}</p>`:'')).join(''):''};
-  return`<div class="card hero row">${ring(p,Math.round(p*100)+'%','DONE')}<div class="grow"><b style="font-size:18px">${i.it.length&&i.n===i.it.length?'Session complete':i.state==='rest'?'Rest day':i.state==='done'?'Streak active':'Keep going'}</b><p class="sub">${i.it.reduce((a,x)=>a+(+x.mins||0),0)} min planned · streak ${streak()}</p></div></div>
+  return`<div class="card hero row">${ring(p,Math.round(p*100)+'%','DONE')}<div class="grow"><b style="font-size:18px">${i.dry||(i.it.length&&i.n===i.it.length)?'Session complete':i.state==='rest'?'Rest day':i.state==='done'?'Streak active':'Keep going'}</b><p class="sub">${i.it.reduce((a,x)=>a+(+x.mins||0),0)} min planned · streak ${streak()}</p></div></div>
   ${i.it.length?grp('stretch')+grp('workout'):'<div class="card empty" style="margin-top:14px">No sessions assigned today.<br><button class="link" onclick="go(\'lib\')">Assign items in the library</button></div>'}`}
 function libV(){
   const L=S.lib.filter(x=>lf==='all'||x.type===lf);
@@ -606,22 +610,55 @@ async function vDelGo(id){await idbDel(id);S.vids=S.vids.filter(x=>x.id!==id);sa
 const SOL=['Fine','Mild','Sore','Very sore'],SOCol=['#3a3a40','#ffd24a','#ff8a2a','#ff3b3b'];
 let CK=null;
 const ckTxt=()=>{const k=Object.keys(CK.lv);return k.length?k.map(m=>ML[m]+': '+SOL[CK.lv[m]]).join(' · '):'Nothing marked. Feeling fresh.'};
-function ckOpen(){const t=(S.sore||[]).find(s=>s.d===dk());CK={lv:Object.assign({},t?t.lv:{}),e:t?t.e:3,note:t?t.note:''};
-  modal('Soreness check-in',`<p class="sub">Tap a muscle to rate it: mild, sore, then very sore. Tap again to clear.</p>
+function ckOpen(){const t=(S.sore||[]).find(s=>s.d===dk()),R=recov(),fat=Object.keys(MB).filter(m=>R[m].rem>0).sort((a,b)=>R[b].rem-R[a].rem);
+  CK={lv:Object.assign({},t?t.lv:{}),e:t?t.e:3,note:t?t.note:'',rc:{}};
+  const rows=fat.map(m=>{const p=Math.max(0,Math.min(100,Math.round((1-R[m].rem/R[m].need)*100)));CK.rc[m]=p;
+   return`<div style="margin-top:12px"><div class="row sp"><b>${ML[m]}</b><span class="sub" id="rp_${m}">${p}% recovered</span></div><input type="range" min="0" max="100" step="5" value="${p}" oninput="rcSet('${m}',this.value)"></div>`}).join('');
+  modal('Daily check-in',`<p class="sub">Step 1: tap sore muscles to rate them mild, sore, then very sore. Tap again to clear.</p>
   <div class="leg" style="margin:12px 0">${SOL.map((l,i)=>`<span><i style="background:${SOCol[i]}"></i>${l}</span>`).join('')}</div>
   <div class="models"><div>${bmap('f',null,1)}<p class="sub fb">FRONT</p></div><div>${bmap('b',null,1)}<p class="sub fb">BACK</p></div></div>
   <p class="sub" id="cm" style="margin-top:10px">${ckTxt()}</p>
+  <label class="l">Step 2: how recovered does each muscle feel?</label>${fat.length?rows:'<p class="sub">All muscles are ready.</p>'}
   <label class="l">Energy today</label><select id="ce">${['Drained','Low','Okay','Good','Great'].map((t,i)=>`<option value="${i+1}" ${CK.e===i+1?'selected':''}>${t}</option>`).join('')}</select>
   <label class="l">Notes (optional)</label><textarea id="cn" maxlength="300">${esc(CK.note)}</textarea>
   <button class="btn full" style="margin-top:18px" onclick="ckSave()">Save check-in</button>`)}
+const rcSet=(m,v)=>{CK.rc[m]=+v;const e=$('#rp_'+m);if(e)e.textContent=v+'% recovered'};
 function ckTap(m){const v=((CK.lv[m]||0)+1)%4;if(v)CK.lv[m]=v;else delete CK.lv[m];
   document.querySelectorAll('[data-m="'+m+'"]').forEach(g=>{g.style.fill=SOCol[v]});$('#cm').textContent=ckTxt()}
-function ckSave(){const e={id:uid(),d:dk(),t:Date.now(),lv:CK.lv,e:+val('ce')||3,note:val('cn').trim()};
+function ckSave(){const e={id:uid(),d:dk(),t:Date.now(),lv:CK.lv,rc:CK.rc||{},e:+val('ce')||3,note:val('cn').trim()};
   S.sore=(S.sore||[]).filter(s=>s.d!==e.d).concat(e).slice(-120);save();closeM();render();toast(Object.keys(e.lv).length?'Saved. Recovery map updated.':'Check-in saved')}
 function ckCard(){const c=(S.sore||[]).find(s=>s.d===dk()),n=c?Object.keys(c.lv).length:0;
-  return`<h2>Check-in</h2><div class="card row sp"><div class="grow"><b>${c?'Checked in today':'How does your body feel?'}</b><div class="sub">${c?(n?n+' sore area'+(n>1?'s':'')+' logged':'Feeling fresh'):'Log soreness to sharpen your recovery map.'}</div></div><button class="btn sm" onclick="ckOpen()">${c?'Update':'Check in'}</button></div>`}
+  return`<h2>Check-in</h2><div class="card row sp"><div class="grow"><b>${c?'Checked in today':'How does your body feel?'}</b><div class="sub">${c?(n?n+' sore area'+(n>1?'s':'')+' logged':'Feeling fresh'):'Rate soreness and recovery to sharpen your estimates.'}</div></div><button class="btn sm" onclick="ckOpen()">${c?'Update':'Check in'}</button></div>`}
 function soreTrend(){const a=(S.sore||[]).slice(-14);
   return`<h2>Soreness trend</h2><div class="card">${a.length>1?line(a.map(s=>({l:fmt(s.d),v:Object.keys(s.lv).reduce((t,m)=>t+s.lv[m],0)})),v=>v.toFixed(0)):'<div class="empty">Check in on two or more days to see your trend.</div>'}</div>`}
+
+/* ---------- dryland ---------- */
+IC.dry='M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12';
+const stc=p=>p<34?'#ffd24a':p<67?'#ff8a2a':'#ff3b3b',sh=p=>p<=50?Math.max(4,.96*p):48+.24*(p-50);
+const eta=h=>new Date(Date.now()+h*36e5).toLocaleString(undefined,{weekday:'short',hour:'numeric'});
+let DL={sel:{},name:'',min:''};
+const DP=[['Legs',['quads','hams','glutes','calves','adductors','hipflex']],['Upper body',['chest','shoulders','back','biceps','triceps','traps','forearms']],['Core',['abs','obliques','lowback']],['Goalie slides',['adductors','hipflex','quads','glutes']]];
+function keep(f){const y=document.scrollingElement.scrollTop;f();document.scrollingElement.scrollTop=y}
+function dlTap(m){if(DL.sel[m]!=null)delete DL.sel[m];else DL.sel[m]=50;keep(render)}
+function dlPreset(i){DP[i][1].forEach(m=>{if(DL.sel[m]==null)DL.sel[m]=50});keep(render)}
+function dlSet(m,v){DL.sel[m]=+v;const e=$('#dp_'+m);if(e){e.textContent=v+'% · about '+fh(sh(+v));e.style.color=stc(+v)}document.querySelectorAll('[data-m="'+m+'"]').forEach(g=>{g.style.fill=stc(+v)})}
+function dlSave(){
+  const ms=Object.keys(DL.sel);if(!ms.length)return;const id=uid(),k=dk(),was=info(new Date()).any;
+  S.logs.push({id,d:k,t:Date.now(),item:'',name:DL.name.trim()||'Dryland session',type:'dryland',muscles:ms,strain:Object.assign({},DL.sel),min:+DL.min||0,sets:[]});
+  S.logs=S.logs.slice(-600);(S.done[k]||(S.done[k]=[])).push('dl'+id);save();DL={sel:{},name:'',min:''};render();
+  toast(was?'Dryland logged. Recovery map updated.':'Streak active! '+streak()+' day'+(streak()===1?'':'s'))}
+function dlDel(id){const l=S.logs.find(x=>x.id===id);if(!l)return;S.logs=S.logs.filter(x=>x.id!==id);if(S.done[l.d])S.done[l.d]=S.done[l.d].filter(v=>v!=='dl'+id);save();render()}
+function dryView(){
+  const sel=Object.keys(DL.sel),recent=S.logs.filter(l=>l.type==='dryland').slice(-5).reverse();
+  return hdr('Off-ice','Dryland')+`<p class="sub" style="margin-top:8px">Tap the muscles you trained, then set how strained each one is. Your recovery map updates right away.</p>
+  <div class="chips" style="margin-top:14px">${DP.map((p,i)=>`<button class="chip" onclick="dlPreset(${i})">${p[0]}</button>`).join('')}<button class="chip" onclick="DL.sel={};keep(render)">Clear</button></div>
+  <div class="card"><div class="leg" style="margin-bottom:10px"><span><i style="background:#3a3a40"></i>Not trained</span><span><i style="background:#ffd24a"></i>Light</span><span><i style="background:#ff8a2a"></i>Moderate</span><span><i style="background:#ff3b3b"></i>Heavy</span></div>
+  <div class="models"><div>${bmap('f',null,2)}<p class="sub fb">FRONT</p></div><div>${bmap('b',null,2)}<p class="sub fb">BACK</p></div></div></div>
+  <h2>Strain per muscle</h2><div class="card">${sel.length?sel.map(m=>`<div class="pb" style="display:block"><div class="row sp"><b>${ML[m]}</b><span class="sub" id="dp_${m}" style="color:${stc(DL.sel[m])};font-weight:700">${DL.sel[m]}% · about ${fh(sh(DL.sel[m]))}</span></div><input type="range" min="5" max="100" step="5" value="${DL.sel[m]}" oninput="dlSet('${m}',this.value)"></div>`).join(''):'<div class="empty">Tap muscles on the model to add them.</div>'}</div>
+  <div class="two" style="margin-top:12px"><input placeholder="Session name (optional)" value="${esc(DL.name)}" maxlength="40" oninput="DL.name=this.value"><input type="number" min="0" placeholder="Minutes" value="${esc(DL.min)}" oninput="DL.min=this.value"></div>
+  <button class="btn full" style="margin-top:12px" onclick="dlSave()" ${sel.length?'':'disabled'}>Log dryland session</button>
+  <h2>Strain guide</h2><div class="card sub">25% light, 1 day · 50% normal, 2 days · 75% hard, about 2.25 days · 100% maximum, 2.5 days. Anything under 50% strain, or past halfway recovered, stays trainable. Just go lighter and be careful.</div>
+  <h2>Recent sessions</h2><div class="card">${recent.length?recent.map(l=>`<div class="pb"><div class="grow"><div class="nm">${esc(l.name)}</div><div class="sub">${fmt(l.d)}${l.min?' · '+l.min+' min':''} · ${Object.keys(l.strain).map(m=>ML[m]+' '+l.strain[m]+'%').join(', ')}</div></div><button class="x" onclick="dlDel('${l.id}')" aria-label="Delete">✕</button></div>`).join(''):'<div class="empty">No dryland sessions yet.</div>'}</div>`}
 
 /* ---------- shell ---------- */
 IC.body='M12 3a2 2 0 110 4 2 2 0 010-4zM6 10h12M12 10v6M12 16l-3 5M12 16l3 5';
@@ -629,7 +666,7 @@ function modal(t,b){$('#m').innerHTML=`<div class="mb" onclick="if(event.target=
 function closeM(){$('#m').innerHTML=''}
 function go(v){if(v==='today'||v==='lib'){tv=v;v='train'}view=v;render();scrollTo(0,0)}
 function render(){
-  const V={dash,train,body:bodyView,shorts:shortsView,sched,stats,set:settings},N=[['dash','Home','home'],['train','Train','today'],['body','Recovery','body'],['shorts','Shorts','shorts'],['sched','Schedule','cal'],['stats','Stats','stats'],['set','Settings','set',1]];
+  const V={dash,train,body:bodyView,dry:dryView,shorts:shortsView,sched,stats,set:settings},N=[['dash','Home','home'],['train','Train','today'],['dry','Dryland','dry'],['body','Recovery','body'],['shorts','Shorts','shorts'],['stats','Stats','stats'],['sched','Schedule','cal',1],['set','Settings','set',1]];
   $('#app').innerHTML=`<main>${V[view]()}</main><nav class="nav"><div class="brand">RED<i>LINE</i></div>${N.map(n=>`<button class="${(view===n[0]?'on':'')+(n[3]?' dsk':'')}" onclick="go('${n[0]}')">${svg(IC[n[2]])}${n[1]}</button>`).join('')}</nav>`;
   document.documentElement.style.overflow=view==='shorts'?'hidden':'';if(view==='shorts')setupFeed();else revokeAll()}
 applyTheme();render();checkRem();setInterval(checkRem,30000);
